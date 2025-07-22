@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Case Forms{% endblock %}
+{% block content %}
+<!DOCTYPE html>
+<html lang="en">
+<link href="/css/transaction_update.css" rel="stylesheet">
+<div>
+
+    <body id="bg-gradient-primary">
+        <div class="container-fluid">
+            <div class="row justify-content-center">
+                <div class="col-xl-10 col-lg-12 col-md-9">
+                    <div class="card o-hidden border-0 shadow-lg my-5">
+                        <div class="card-body p-0">
+                            <div class="row">
+                                <div class="col-lg-3"></div>
+                                <div class="col-lg-6">
+                                    <div class="p-5">
+                                        <div class="text-center">
+                                            <h1 class="h4 text-gray-900 mb-2">Edit the Case</h1>
+                                        </div>
+                                        <form id="transaction-form" method="POST" action="/transaction_update">
+                                            <div class="container">
+                                                <div class="row">
+                                                    <div class="col-sm-6 mb-3 mb-sm-0">
+                                                        <div class="form-group">
+                                                            <h4>Transaction ID</h4>
+                                                            <input type="text" class="form-control greyed-out"
+                                                                name="transaction_id" id="transaction_id"
+                                                                value="{{transaction_id}}" readonly>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-sm-6">
+                                                        <div class="form-group">
+                                                            <h4>Listing ID</h4>
+                                                            <input type="text" name="listing_id" id="listing_id"
+                                                                class="form-control" placeholder="{{listing_id}}">
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="row">
+                                                    <div class="col-sm-12">
+                                                        <div class="form-group">
+                                                            <h4>Buyer Id</h4>
+                                                            <input type="text" name="buyer_id" id="buyer_id"
+                                                                class="form-control" placeholder="{{buyer_id}}">
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="row">
+                                                    <div class="col-sm-12">
+                                                        <button type="submit" class="submit" id="datasubmit">Finalize
+                                                            Editing</button>
+                                                        <form method="POST" action="/delete_transaction"
+                                                            id="delete-form" style="display:inline;">
+                                                            <input type="hidden" name="transaction_id"
+                                                                id="delete_transaction_id" value="{{transaction_id}}">
+                                                            <button type="submit" class="submit"
+                                                                id="delete-style">Delete Transaction</button>
+                                                        </form>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </form>
+                                        <hr>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal fade" id="logoutModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel"
+            aria-hidden="true">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="exampleModalLabel">Ready to Leave?</h5>
+                        <button class="close" type="button" data-dismiss="modal" aria-label="Close">
+                            <span aria-hidden="true">×</span>
+                        </button>
+                    </div>
+                    <div class="modal-body">Select "Logout" below if you are ready to end your current session.</div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" type="button" data-dismiss="modal">Cancel</button>
+                        <a class="btn btn-primary" href="/templates/login.html">Logout</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+    </body>
+</div>
+
+</html>
+
+{% endblock %}

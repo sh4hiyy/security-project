@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}EcoThrift{% endblock %}
+{% block content %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <title>Home Page</title>
+    <link href="../vendor/fontawesome-free/css/all.min.css" rel="stylesheet" type="text/css">
+    <link
+        href="https://fonts.googleapis.com/css?family=Nunito:200,200i,300,300i,400,400i,600,600i,700,700i,800,800i,900,900i"
+        rel="stylesheet">
+    <link href="../css/sb-admin-2.css" rel="stylesheet">
+    <link href="/css/home.css" rel="stylesheet">
+</head>
+
+<body id="page-top">
+
+    <div class="container-fluid">
+        <div class="d-sm-flex align-items-center justify-content-between mb-4">
+            <h1 class="h3 mb-0 text-gray-800">Products</h1>
+        </div>
+        <div class="row">
+            {% for listing in listings %}
+            {% if listing.is_sold == 0 %}
+            <div class="col-12 mb-3">
+                <div class="card shadow h-100 py-2 d-flex flex-row align-items-center">
+                    <img src="{{ listing.image_path }}" class="card-img-left"
+                        style="width: 180px; height: 150px; object-fit: cover; margin: 10px; border-radius: 10px;">
+                    <div class="card-body d-flex flex-column justify-content-center" style="flex-grow: 1;">
+                        <h5 class="text-success text-uppercase mb-1">{{ listing.title }}</h5>
+                        <p class="product-description mb-1">{{ listing.description }}</p>
+                        <p class="product-category text-muted mb-1">{{ listing.category }}</p>
+                        <h5 class="font-weight-bold text-gray-800">${{ listing.price }}</h5>
+                        {% if session['loggedin'] == False %}
+                        <form>
+                            <button class="openPopup btn btn-primary mt-2" data-popup-id="loginPopup">Add to
+                                Cart</button>
+                        </form>
+                        {% else %}
+                        <form onsubmit="handleSubmit(event)" method="post">
+                            <input type="hidden" name="product_id" value="{{ listing.listing_id }}">
+                            <input type="hidden" name="product_name" value="{{ listing.title }}">
+                            <input type="hidden" name="product_price" value="{{ listing.price }}">
+                            <button type="submit" class="btn btn-primary mt-2">Add to Cart</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+        <div id="loginPopup" class="popup">
+            <div class="popup-content">
+                <span class="close" data-close-button>&times;</span>
+                <h2>Please Log In</h2>
+                <p>You need to log in to proceed with the purchase. No account? <a
+                        href="{{url_for('signup')}}">Signup</a> here </p>
+                <a href="{{ url_for('login') }}" class="btn btn-primary">Log In</a>
+            </div>
+        </div>
+        <div id="popupOverlay" class="popup-overlay"></div>
+    </div>
+    <a class="scroll-to-top rounded" href="#page-top">
+        <i class="fas fa-angle-up"></i>
+    </a>
+    <div class="modal fade" id="logoutModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="exampleModalLabel">Ready to Leave?</h5>
+                    <button class="close" type="button" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">×</span>
+                    </button>
+                </div>
+                <div class="modal-body">Select "Logout" below if you are ready to end your current session.</div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" type="button" data-dismiss="modal">Cancel</button>
+                    <a class="btn btn-primary" href="/templates/login.html">Logout</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="cart-sidebar" class="cart-sidebar">
+        <span class="close-btn" onclick="toggleCartSidebar()">×</span>
+        <h4>Cart Details</h4>
+        <ul id="cart-items"></ul>
+        <div id="cart-total-sidebar" style="font-weight: bold;">Total: $0</div>
+        <button id="clear-cart">Clear Cart</button>
+        <button onclick="goToCheckout()" id="checkout-button">Checkout</button>
+    </div>
+</body>
+<script src="/js/home.js"></script>
+
+</html>
+
+{% endblock %}

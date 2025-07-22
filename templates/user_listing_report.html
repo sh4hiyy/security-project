@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}User's Report{% endblock %}
+{% block content %}
+<h1>Users Listing & Sales Report</h1>
+<br>
+{% if table_type == 'sales' %}
+<h3>Total Sales: ${{ total_sales }}</h3>
+{% elif table_type == 'listings' %}
+<h3>Total Listings Valuation: ${{ total_value }}</h3>
+{% endif %}
+<br>
+<button class="btn btn-primary dropdown-toggle" type="button" id="dropdownMenuButton1" data-toggle="dropdown"
+    aria-haspopup="true" aria-expanded="false">
+    Select Chart
+</button>
+<div class="dropdown-menu animated--fade-in" aria-labelledby="dropdownMenuButton1">
+    <a class="dropdown-item" href="{{ url_for('listing_report') }}">View all listings</a>
+    <a class="dropdown-item" href="{{ url_for('sales_report') }}">View sales performance</a>
+    <a class="dropdown-item" href="{{ url_for('category_report') }}">View Category Proportion</a>
+</div>
+<br>
+{% if table_type == 'listings' %}
+<div class="my-2">
+    <a href="{{ url_for('listing_report') }}" class="btn btn-info btn-icon-split">
+        <span class="icon text-white-50">
+            <i class="fas fa-info-circle"></i>
+        </span>
+        <span class="text">By Price</span>
+    </a>
+</div>
+<div class="my-2">
+    <a href="{{ url_for('listing_report_count') }}" class="btn btn-primary btn-icon-split">
+        <span class="icon text-white-50">
+            <i class="fas fa-flag"></i>
+        </span>
+        <span class="text">By Count</span>
+    </a>
+</div>
+{% endif %}
+<br>
+<div>
+    {{ fig_html | safe }}
+</div>
+<div class="card-header py-3">
+    <h6 class="m-0 font-weight-bold text-primary">User's Listings</h6>
+</div>
+<div class="card-body">
+    <div class="table-responsive">
+        {% if table_type == 'listings' %}
+        <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Description</th>
+                    <th>Category</th>
+                    <th>Price</th>
+                    <th>Sold</th>
+                    <th></th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in user_listings %}
+                <tr>
+                    <td>{{ row["title"] }}</td>
+                    <td>{{ row["description"] }}</td>
+                    <td>{{ row["category"] }}</td>
+                    <td>{{ row["price"] }}</td>
+                    <td>{{ row["is_sold"] }}</td>
+                    <td><a href="{{ url_for('edit_listing', listing_id=row['listing_id']) }}"
+                            class="d-none d-sm-inline-block btn btn-sm btn-warning shadow-sm"><i
+                                class="fa-sm text-white-50"></i>Edit</a></td>
+                    <td><a href="{{ url_for('delete_listing', listing_id=row['listing_id']) }}"
+                            class="btn btn-danger btn-sm delete-btn"><i class="fa-sm text-white-50"></i>Delete</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% elif table_type == 'categories' %}
+        <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Description</th>
+                    <th>Category</th>
+                    <th>Price</th>
+                    <th>Sold</th>
+                    <th></th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in user_listings %}
+                <tr>
+                    <td>{{ row["title"] }}</td>
+                    <td>{{ row["description"] }}</td>
+                    <td>{{ row["category"] }}</td>
+                    <td>{{ row["price"] }}</td>
+                    <td>{{ row["is_sold"] }}</td>
+                    <td><a href="{{ url_for('edit_listing', listing_id=row['listing_id']) }}"
+                            class="d-none d-sm-inline-block btn btn-sm btn-warning shadow-sm"><i
+                                class="fa-sm text-white-50"></i>Edit</a></td>
+                    <td><a href="{{ url_for('delete_listing', listing_id=row['listing_id']) }}"
+                            class="btn btn-danger btn-sm delete-btn"><i class="fa-sm text-white-50"></i>Delete</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% elif table_type == 'sales' %}
+        <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Category</th>
+                    <th>Price Sold</th>
+                    <th>Transaction Date & Time</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in transactions_listings %}
+                <tr>
+                    <td>{{ row["title"] }}</td>
+                    <td>{{ row["category"] }}</td>
+                    <td>{{ row["price"] }}</td>
+                    <td>{{ row["transaction_date"] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </div>
+</div>
+
+
+{% endblock %}

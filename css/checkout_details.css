@@ -1,0 +1,217 @@
+.row {
+    display: -ms-flexbox; /* IE10 */
+    display: flex;
+    -ms-flex-wrap: wrap; /* IE10 */
+    flex-wrap: wrap;
+    margin: 0 -16px;
+  }
+  
+  .col-25 {
+    -ms-flex: 25%; /* IE10 */
+    flex: 25%;
+  }
+  
+  .col-50 {
+    -ms-flex: 50%; /* IE10 */
+    flex: 50%;
+  }
+  
+  .col-75 {
+    -ms-flex: 75%; /* IE10 */
+    flex: 75%;
+  }
+  
+  .col-25,
+  .col-50,
+  .col-75 {
+    padding: 0 16px;
+  }
+  
+  .container {
+    
+    padding: 5px 20px 15px 20px;
+    border: 1px solid lightgrey;
+    border-radius: 3px;
+  }
+  
+  input[type=text] {
+    width: 100%;
+    margin-bottom: 20px;
+    padding: 12px;
+    border: 1px solid #ccc;
+    
+  }
+  input[type=email] {
+    width: 100%;
+    margin-bottom: 20px;
+    padding: 12px;
+    border: 1px solid #ccc;
+    
+  }
+
+  input[type=number] {
+    width: 100%;
+    margin-bottom: 20px;
+    padding: 12px;
+    border: 1px solid #ccc;
+    
+  }
+  label {
+    margin-bottom: 10px;
+    display: block;
+  }
+  
+  .icon-container {
+    margin-bottom: 20px;
+    padding: 7px 0;
+    font-size: 24px;
+  }
+        
+  span.price {
+    float: right;
+    color: grey;
+  }
+    @media (max-width: 800px) {
+    .row {
+      flex-direction: column-reverse;
+    }
+    .col-25 {
+      margin-bottom: 20px;
+    }
+  }
+  .modal {
+    display: block;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    transition: 200ms ease-in-out;
+    border-radius: 10px;
+    z-index: 10;
+    background-color: #ffffff;
+    width: 400px;
+    max-width: 90%;
+    padding: 20px;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+}
+
+.modal.active {
+display: block;
+transform: translate(-50%, -50%) scale(1);
+}
+
+.modal-header {
+display: flex;
+justify-content: space-between;
+align-items: center;
+border-bottom: 2px solid #e0e0e0;
+padding-bottom: 10px;
+}
+
+.modal-header .title {
+font-size: 1.5rem;
+color: #4caf50; /* Green color for success */
+}
+
+.modal-header .close-button {
+cursor: pointer;
+border: none;
+background: none;
+font-size: 1.5rem;
+color: #4caf50;
+}
+
+.modal-body {
+text-align: center;
+padding: 20px;
+}
+
+.success-icon {
+font-size: 3rem;
+color: #4caf50;
+margin-bottom: 10px;
+}
+
+.success-message {
+font-size: 1.2rem;
+font-weight: bold;
+margin-bottom: 10px;
+}
+
+.sub-message {
+font-size: 1rem;
+margin-bottom: 20px;
+}
+
+.home-button {
+padding: 10px 20px;
+background-color: #4caf50;
+color: white;
+border: none;
+border-radius: 5px;
+font-size: 1rem;
+cursor: pointer;
+transition: background-color 0.3s;
+}
+
+.home-button:hover {
+background-color: #388e3c;
+}
+
+#overlay {
+position: fixed;
+opacity: 0;
+top: 0;
+left: 0;
+right: 0;
+bottom: 0;
+background-color: rgba(0, 0, 0, 0.5);
+pointer-events: none;
+transition: opacity 200ms ease-in-out;
+}
+
+#overlay.active {
+opacity: 1;
+pointer-events: all;
+}
+
+.checkout-actions button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  font-size: 16px;
+  cursor: pointer;
+  margin: 5px 0;
+}
+
+#checkout-button {
+  background-color: #28a745; /* Green color for 'Checkout' */
+  color: #fff;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  font-size: 16px;
+  cursor: pointer;
+  margin: 5px 0;
+  display: inline-block;
+}
+
+#checkout-button:hover {
+  background-color: #218838; 
+}
+
+.checkout-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+
+.checkout-actions button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  font-size: 16px;
+  cursor: pointer;
+  margin: 5px 0;
+}

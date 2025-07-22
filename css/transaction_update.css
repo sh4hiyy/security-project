@@ -1,0 +1,53 @@
+.greyed-out {
+    background-color: #f0f0f0; 
+    color: #888; 
+    border: 1px solid #ccc; 
+}
+
+.greyed-out::placeholder {
+    color: #888; 
+}
+
+#datasubmit {
+    background-color: #007bff; 
+    color: white; 
+    border: none;
+    padding: 10px 20px;
+    font-size: 16px; 
+    border-radius: 5px; 
+    cursor: pointer; 
+    transition: background-color 0.3s, box-shadow 0.3s; 
+    margin-right: 10px; 
+}
+
+#datasubmit:hover {
+    background-color: #0056b3; 
+}
+
+#datasubmit:focus {
+    outline: none; 
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.5); 
+}
+
+#delete-style {
+    background-color: #dc3545; 
+    color: white; 
+    border: none; 
+    padding: 10px 20px;
+    font-size: 16px; 
+    border-radius: 5px; 
+    cursor: pointer;
+    transition: background-color 0.3s, box-shadow 0.3s; 
+}
+
+#delete-style:hover {
+    background-color: #c82333; 
+}
+
+
+#delete-style:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.5); 
+}
+
+

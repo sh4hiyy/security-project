@@ -1,0 +1,195 @@
+
+#checkout-container {
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    max-width: 90%;
+    width: 600px;
+    display: flex;
+    flex-direction: column;
+}
+
+.checkout-container h1 {
+    text-align: center;
+    margin-bottom: 20px;
+    color: #343a40;
+}
+
+#cart-items {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+#cart-items li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 10px;
+}
+
+.item-details {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.item-name {
+    font-size: 16px;
+    font-weight: bold;
+}
+
+.item-price, .item-quantity {
+    font-size: 14px;
+    color: #6c757d;
+}
+
+.actions {
+    display: flex;
+    align-items: center;
+}
+
+.quantity-btn, .remove-btn {
+    cursor: pointer;
+    padding: 5px;
+    margin: 0 5px;
+    border: none;
+    background-color: #6c757d;
+    color: #fff;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.quantity-btn:hover, .remove-btn:hover {
+    background-color: #5a6268;
+}
+
+#cart-total {
+    font-weight: bold;
+    text-align: right;
+    margin-top: 20px;
+    font-size: 18px;
+}
+
+
+.checkout-actions button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    font-size: 16px;
+    cursor: pointer;
+    margin: 5px 0;
+}
+
+#checkout-button {
+    background-color: #28a745; /* Green color for 'Checkout' */
+    color: #fff;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    font-size: 16px;
+    cursor: pointer;
+    margin: 5px 0;
+    display: inline-block;
+}
+
+#checkout-button:hover {
+    background-color: #218838; /* Darker green on hover */
+}
+
+/* Add this class if you use the class for button grouping */
+.checkout-actions {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 20px;
+    flex-wrap: wrap;
+}
+
+.checkout-actions button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    font-size: 16px;
+    cursor: pointer;
+    margin: 5px 0;
+}
+
+#clear-cart {
+    background-color: #dc3545;
+    color: #fff;
+}
+
+#clear-cart:hover {
+    background-color: #c82333;
+}
+/* Style for cart remove button */
+.cart-remove-button {
+    background-color: transparent;
+    border: none;
+    font-size: 20px;
+    color: #333; /* Default color */
+    cursor: pointer;
+    outline: none;
+}
+
+/* Style for cart remove button when hovered */
+.cart-remove-button:hover {
+    color: #f00; /* Red color on hover */
+}
+
+/* Style for cart remove button when focused */
+.cart-remove-button:focus {
+    outline: none; /* Remove focus outline */
+}
+
+.transparent-button {
+        background-color: transparent;
+        border: none;
+        color: grey; /* Text color */
+        font-size: 70px; /* Adjust font size */
+        cursor: pointer;
+        padding: 0;
+        margin: 0;
+    }
+
+    .transparent-button:hover {
+        opacity: 0.6; /* Optional: Adds a hover effect */
+    }
+    .cart-sidebar {
+            position: fixed;
+            top: 0;
+            right: -300px;
+            width: 300px;
+            height: 100%;
+            background-color: white;
+            border-left: 1px solid #ccc;
+            box-shadow: -2px 0 5px rgba(0,0,0,0.5);
+            transition: right 0.3s ease;
+            z-index: 1000;
+            padding: 20px;
+            
+        }
+        .cart-sidebar.active {
+            right: 0;
+        }
+        .cart-sidebar h4 {
+            margin-top: 0;
+        }
+        .cart-sidebar ul {
+            list-style: none;
+            padding: 0;
+        }
+        .cart-sidebar ul li {
+            margin-bottom: 10px;
+        }
+
+        .cart-sidebar .close-btn {
+            cursor: pointer;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 20px;
+        }
