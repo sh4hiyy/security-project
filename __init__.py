@@ -99,40 +99,9 @@ def login():
         user_agent = request.headers.get('User-Agent')
 
         user = User()
-        login_success, otp = user.login(credential, password)
+        login_success, _ = user.login(credential, password)
 
         if login_success:
-            DBManager().log_audit_event(user.user_id, 'login', ip_address, user_agent, "Successful login")
-            session['user_email'] = user.email
-            if otp:
-                return redirect(url_for('otp_route'))
-            else:
-                DBManager().log_audit_event(None, 'login_failed', ip_address, user_agent, f"Failed login: {credential}")
-                flash("Invalid username or password", "danger")
-                session.update({
-                    'user_id': user.user_id,
-                    'username': user.username,
-                    'email': user.email,
-                    'is_admin': user.is_admin,
-                    'profile_pic': user.profile_pic,
-                    'loggedin': True
-                })
-                return redirect(url_for('home'))
-        flash("Invalid username or password", "danger")
-    return render_template('login.html', form=form)
-
-
-@app.route('/otp_route', methods=['GET', 'POST'])
-def otp_route():
-    form = OTPForm(request.form)
-    user_email = session.get('user_email')
-
-    if request.method == 'GET':
-        session['otp'] = Email().send_otp(user_email)
-
-    elif request.method == 'POST' and form.validate():
-        user = User(email=user_email)
-        if user.verify_otp(form.otp.data.strip(), session.get('otp')):
             session.update({
                 'user_id': user.user_id,
                 'username': user.username,
@@ -141,13 +110,33 @@ def otp_route():
                 'profile_pic': user.profile_pic,
                 'loggedin': True
             })
-            session.pop('user_email', None)
-            flash("OTP verified successfully!", "success")
-            DBManager().log_audit_event(user.user_id, '2fa_attempt', request.remote_addr,
-                                        request.headers.get('User-Agent'), "2FA verified successfully")
+
+            # ✅ Log successful login
+            db = DBManager()
+            db.log_audit_event(
+                user_id=user.user_id,
+                log_type='login',
+                ip_address=ip_address,
+                user_agent=user_agent,
+                details='Successful login'
+            )
+
             return redirect(url_for('home'))
-        flash("Incorrect OTP", "danger")
-    return render_template('otp.html', form=form)
+
+        # ✅ Log failed login (only if login was unsuccessful)
+        db = DBManager()
+        db.log_audit_event(
+            user_id=None,
+            log_type='login_failed',
+            ip_address=ip_address,
+            user_agent=user_agent,
+            details=f'Failed login: {credential}'
+        )
+
+        flash("Invalid username or password", "danger")
+
+    return render_template('login.html', form=form)
+
 
 @app.route('/logout')
 def logout():
