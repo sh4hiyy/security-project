@@ -98,14 +98,19 @@ class OTPForm(Form):
 class RequestResetForm(Form):
     email_reset = EmailField('Email', validators=[DataRequired()], render_kw={'placeholder': 'Email'})
 
-class signupForm(Form):
-    email = EmailField('Email', validators=[DataRequired()], render_kw={'placeholder': 'Email'})
-    username = StringField('Username', validators=[DataRequired(),
-                                                   Regexp(r'^[a-zA-Z0-9._]+$', message='Username must contain only letters, numbers, underscores, and dots')],
-                           render_kw={'placeholder': 'Username'})
-    password = PasswordField('Password', validators=[DataRequired()], render_kw={'placeholder': 'Password'})
-    confirm_password = PasswordField('Confirm Password', validators=[DataRequired(), EqualTo('password')], render_kw={'placeholder': 'Confirm Password'})
+# class signupForm(Form):
+#     email = EmailField('Email', validators=[DataRequired()], render_kw={'placeholder': 'Email'})
+#     username = StringField('Username', validators=[DataRequired(),
+#                                                    Regexp(r'^[a-zA-Z0-9._]+$', message='Username must contain only letters, numbers, underscores, and dots')],
+#                            render_kw={'placeholder': 'Username'})
+#     password = PasswordField('Password', validators=[DataRequired()], render_kw={'placeholder': 'Password'})
+#     confirm_password = PasswordField('Confirm Password', validators=[DataRequired(), EqualTo('password')], render_kw={'placeholder': 'Confirm Password'})
 
+class signupForm(FlaskForm):  # ✅ was probably "Form" before
+    username = StringField('Username', validators=[InputRequired(), Length(min=4, max=20)])
+    email = StringField('Email', validators=[InputRequired(), Email()])
+    password = PasswordField('Password', validators=[InputRequired(), Length(min=8)])
+    submit = SubmitField('Sign Up')
 
 class ForgotPasswordForm(FlaskForm):
     email = StringField('Email Address', validators=[

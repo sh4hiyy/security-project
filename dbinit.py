@@ -76,7 +76,7 @@ def init_db():
         conn = mysql.connector.connect(
             host='localhost',
             user='root',
-            password='mysql',
+            password='dbmsPa55',
             port=3306,
             auth_plugin='mysql_native_password'  # Explicitly specify auth plugin
         )
@@ -85,8 +85,8 @@ def init_db():
         cursor = conn.cursor()
 
         # Create database if not exists
-        cursor.execute("CREATE DATABASE IF NOT EXISTS sec_proj")
-        cursor.execute("USE sec_proj")
+        cursor.execute("CREATE DATABASE IF NOT EXISTS pytonlogin2")
+        cursor.execute("USE pytonlogin2")
 
         # Create all tables
         cursor.execute('''

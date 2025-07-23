@@ -15,8 +15,8 @@ class DBManager:
             self.conn = mysql.connector.connect(
                 host='localhost',
                 user='root',
-                password='mysql',
-                database='sec_proj',
+                password='dbmsPa55',
+                database='pytonlogin2',
                 port=3306,
                 auth_plugin = 'mysql_native_password',
             )

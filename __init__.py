@@ -1,3 +1,593 @@
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
+from forms import *
+from listing import Listing
+from user import User
+from sendemail import Email
+from transaction import Transaction
+from dbmanager import *
+import plotly.express as px
+from functools import wraps
+import logging
+import pandas as pd
+from datetime import datetime
+from itsdangerous import URLSafeTimedSerializer
+from flask import current_app
+
+app = Flask(__name__, static_folder='')
+app.secret_key = 'helpmepls'
+
+# Initialize logging
+logger = logging.getLogger(__name__)
+
+
+# ======================
+# HELPER FUNCTIONS
+# ======================
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login', next=request.url))
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session or not session.get('is_admin'):
+            return redirect(url_for('login', next=request.url))
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
+def generate_token(email):
+    serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
+    return serializer.dumps(email, salt='password-reset-salt')
+
+
+def verify_token(token, expiration=3600):
+    serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
+    try:
+        email = serializer.loads(
+            token,
+            salt='password-reset-salt',
+            max_age=expiration
+        )
+    except:
+        return False
+    return email
+
+
+# ======================
+# CORE ROUTES
+# ======================
+@app.route('/')
+def start():
+    session.clear()
+    session['loggedin'] = False
+    session['admin'] = False
+    return redirect(url_for('home'))
+
+
+@app.route('/home')
+def home():
+    db = DBManager()
+    listings = db.get_table('listings').to_dict(orient='records')
+    if session.get('admin'):
+        return render_template('admin_report.html')
+    return render_template('home.html', listings=listings)
+
+
+@app.route('/base')
+def base():
+    return render_template('base.html')
+
+
+# ======================
+# AUTHENTICATION ROUTES
+# ======================
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    form = LoginForm(request.form)
+    if request.method == 'POST' and form.validate():
+        credential = form.username_or_email.data.strip()
+        password = form.password.data.strip()
+        ip_address = request.remote_addr
+        user_agent = request.headers.get('User-Agent')
+
+        user = User()
+        login_success, otp = user.login(credential, password)
+
+        if login_success:
+            DBManager().log_audit_event(user.user_id, 'login', ip_address, user_agent, "Successful login")
+            session['user_email'] = user.email
+            if otp:
+                return redirect(url_for('otp_route'))
+            else:
+                DBManager().log_audit_event(None, 'login_failed', ip_address, user_agent, f"Failed login: {credential}")
+                flash("Invalid username or password", "danger")
+                session.update({
+                    'user_id': user.user_id,
+                    'username': user.username,
+                    'email': user.email,
+                    'is_admin': user.is_admin,
+                    'profile_pic': user.profile_pic,
+                    'loggedin': True
+                })
+                return redirect(url_for('home'))
+        flash("Invalid username or password", "danger")
+    return render_template('login.html', form=form)
+
+
+@app.route('/otp_route', methods=['GET', 'POST'])
+def otp_route():
+    form = OTPForm(request.form)
+    user_email = session.get('user_email')
+
+    if request.method == 'GET':
+        session['otp'] = Email().send_otp(user_email)
+
+    elif request.method == 'POST' and form.validate():
+        user = User(email=user_email)
+        if user.verify_otp(form.otp.data.strip(), session.get('otp')):
+            session.update({
+                'user_id': user.user_id,
+                'username': user.username,
+                'email': user.email,
+                'is_admin': user.is_admin,
+                'profile_pic': user.profile_pic,
+                'loggedin': True
+            })
+            session.pop('user_email', None)
+            flash("OTP verified successfully!", "success")
+            DBManager().log_audit_event(user.user_id, '2fa_attempt', request.remote_addr,
+                                        request.headers.get('User-Agent'), "2FA verified successfully")
+            return redirect(url_for('home'))
+        flash("Incorrect OTP", "danger")
+    return render_template('otp.html', form=form)
+
+@app.route('/logout')
+def logout():
+    user_id = session.get('user_id')
+    DBManager().log_audit_event(user_id, 'logout', request.remote_addr, request.headers.get('User-Agent'), "User logged out")
+    session.clear()
+    return redirect(url_for('start'))
+
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    form = signupForm(request.form)
+    if request.method == 'POST' and form.validate():
+        user = User(
+            username=form.username.data.strip(),
+            email=form.email.data.strip(),
+            password=form.password.data.strip()
+        )
+
+        msg = user.create_user()
+
+        if msg is None:
+            flash('Registration successful! Please log in.', 'success')
+            Email().send_email(user.email, "Registration", "Thank you for signing up")
+            return redirect(url_for('login'))
+        flash(msg, 'danger')
+
+    return render_template('signup.html', form=form)
+
+
+# ======================
+# PASSWORD MANAGEMENT
+# ======================
+
+@app.route('/change_password_with_email', methods=['GET', 'POST'])
+def change_password_with_email():
+    form = RequestResetForm()
+    if form.validate_on_submit():
+        # Add your password reset logic here
+        user = User.query.filter_by(email=form.email.data).first()
+        if user:
+            # Send reset email
+            pass
+        flash('If an account exists with that email, a reset link has been sent', 'info')
+        return redirect(url_for('login'))
+    return render_template('change_password.html', form=form)
+
+@app.route('/change_password', methods=['GET', 'POST'])
+@login_required
+def change_password():
+    form = ChangePasswordForm(request.form)
+    if request.method == 'POST' and form.validate():
+        user = User(user_id=session['user_id'])
+        if user.verify_password(form.current_password.data):
+            if user.change_password(form.new_password.data):
+                flash("Password changed successfully", "success")
+                return redirect(url_for('profile', user_id=session['user_id']))
+            flash("Failed to change password", "danger")
+        else:
+            flash("Current password is incorrect", "danger")
+    return render_template('change_password.html', form=form)
+
+
+@app.route('/forgot_password', methods=['GET', 'POST'])
+def forgot_password():
+    form = ForgotPasswordForm(request.form)
+    if request.method == 'POST' and form.validate():
+        user = User(email=form.email.data.strip())
+        if user.get_user_by_email():
+            token = generate_token(user.email)
+            reset_url = url_for('reset_password', token=token, _external=True)
+            Email().send_email(user.email, "Password Reset", f"Reset link: {reset_url}")
+        flash("If this email exists, a reset link has been sent", "info")
+        return redirect(url_for('login'))
+    return render_template('forgot_password.html', form=form)
+
+
+@app.route('/reset_password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    email = verify_token(token)
+    if not email:
+        flash("Invalid or expired reset link", "danger")
+        return redirect(url_for('forgot_password'))
+
+    form = ResetPasswordForm(request.form)
+    if request.method == 'POST' and form.validate():
+        user = User(email=email)
+        if user.get_user_by_email():
+            if user.change_password(form.new_password.data):
+                flash("Password reset successfully", "success")
+                return redirect(url_for('login'))
+    return render_template('reset_password.html', form=form, token=token)
+
+
+# ======================
+# USER PROFILE ROUTES
+# ======================
+@app.route('/profile/<int:user_id>', methods=['GET', 'POST'])
+@login_required
+def profile(user_id):
+    form = ProfileForm(request.form)
+    user = User(user_id=user_id)
+    user.get_user_by_id()
+
+    if request.method == 'POST' and form.validate():
+        user.profile_pic = form.profile_pic_url.data
+        user.username = form.username.data.strip()
+        user.email = form.email.data.strip()
+        user.name = form.name.data
+        user.phone_number = int(form.phone_number.data) if form.phone_number.data else None
+        user.twofa = form.twofa.data
+        user.edit_user()
+
+        session['user_image'] = user.profile_pic
+        if session['user_id'] == user_id:
+            session['profile_pic'] = user.profile_pic
+            session['username'] = user.username
+
+        flash("Profile updated successfully", "success")
+        return redirect(url_for('profile', user_id=user_id))
+
+    if request.method == 'GET':
+        form.profile_pic_url.data = user.profile_pic
+        form.username.data = user.username
+        form.email.data = user.email
+        form.name.data = user.name
+        form.phone_number.data = user.phone_number
+        form.twofa.data = user.twofa
+
+    return render_template('profile.html', form=form, user_id=user_id)
+
+
+@app.route('/delete_user', methods=['GET', 'POST'])
+@login_required
+def delete_user():
+    form = PasswordForm(request.form)
+    if request.method == 'POST' and form.validate():
+        user = User(user_id=session['user_id'])
+        if user.verify_password(form.password.data):
+            return redirect(url_for('confirm_delete_user', user_id=session['user_id']))
+        flash("Incorrect password", "danger")
+    return render_template('delete_user.html', form=form)
+
+
+@app.route('/confirm_delete_user/<int:user_id>', methods=['GET', 'POST'])
+@login_required
+def confirm_delete_user(user_id):
+    form = ProfileForm(request.form)
+    user = User(user_id=user_id)
+    user.get_user_by_id()
+
+    if request.method == 'POST':
+        user.delete_user()
+        if session['admin']:
+            return redirect(url_for('manage_user'))
+        return redirect(url_for('start'))
+
+    if request.method == 'GET':
+        form.profile_pic_url.data = user.profile_pic
+        form.username.data = user.username
+        form.email.data = user.email
+        form.name.data = user.name
+        form.phone_number.data = user.phone_number
+
+    return render_template('confirm_delete_user.html', form=form, user_id=user_id)
+
+
+# ======================
+# LISTING ROUTES
+# ======================
+@app.route('/products')
+def get_products():
+    db = DBManager()
+    listings = db.get_table('listings').to_dict(orient='records')
+    return render_template('home.html', listings=listings)
+
+
+@app.route('/create_listing', methods=['GET', 'POST'])
+@login_required
+def create_listing():
+    form = CreateListingForm(request.form)
+    if request.method == 'POST' and form.validate():
+        listing = Listing(
+            user_id=session['user_id'],
+            title=form.title.data.strip(),
+            description=form.description.data.strip(),
+            category=form.category.data.strip(),
+            price=form.price.data,
+            image_path=form.image_path.data.strip()
+        )
+        if listing.create_listing():
+            flash("Listing created successfully", "success")
+            return redirect(url_for('home'))
+    return render_template('create_listing.html', form=form)
+
+
+@app.route('/edit_listing/<int:listing_id>', methods=['GET', 'POST'])
+@login_required
+def edit_listing(listing_id):
+    form = CreateListingForm(request.form)
+    listing = Listing(listing_id=listing_id)
+    listing.get_listing_by_id()
+
+    if request.method == 'POST' and form.validate():
+        listing.title = form.title.data.strip()
+        listing.description = form.description.data.strip()
+        listing.category = form.category.data
+        listing.price = float(form.price.data)
+        listing.image_path = str(form.image_path.data)
+        listing.edit_listing()
+        session['listing_image'] = listing.image_path
+        flash("Listing updated successfully", "success")
+        return redirect(url_for('edit_listing', listing_id=listing_id))
+
+    if request.method == 'GET':
+        form.title.data = listing.title
+        form.description.data = listing.description
+        form.category.data = listing.category
+        form.price.data = listing.price
+        form.image_path.data = listing.image_path
+        session['listing_image'] = listing.image_path
+
+    return render_template('edit_listing.html', form=form, listing_id=listing_id)
+
+
+@app.route('/delete_listing/<int:listing_id>', methods=['GET', 'POST'])
+@login_required
+def delete_listing(listing_id):
+    form = CreateListingForm(request.form)
+    listing = Listing(listing_id=listing_id)
+    listing.get_listing_by_id()
+
+    if request.method == 'POST':
+        listing.delete_listing()
+        if session['admin']:
+            return redirect(url_for('admin_report'))
+        return redirect(url_for('listing_report'))
+
+    if request.method == 'GET':
+        form.title.data = listing.title
+        form.description.data = listing.description
+        form.category.data = listing.category
+        form.price.data = listing.price
+        form.image_path.data = listing.image_path
+        session['listing_image'] = listing.image_path
+
+    return render_template('delete_listing.html', form=form, listing_id=listing_id)
+
+
+# ======================
+# TRANSACTION ROUTES
+# ======================
+@app.route('/add_to_cart', methods=['POST'])
+@login_required
+def add_to_cart():
+    product_id = request.json.get('user_id')
+    db = DBManager()
+    cursor = db.conn.cursor()
+    cursor.execute("SELECT listing_id, title, price FROM listings WHERE listing_id = %s", (product_id,))
+    row = cursor.fetchone()
+    if row:
+        return jsonify(product=dict(listing_id=row[0], title=row[1], price=row[2]))
+    return jsonify({"error": "Product not found"}), 404
+
+
+@app.route('/cart')
+@login_required
+def cart():
+    return render_template('cart.html')
+
+
+@app.route('/checkout')
+@login_required
+def checkout():
+    return render_template('checkout.html')
+
+
+@app.route('/process_checkout', methods=['POST'])
+@login_required
+def process_checkout():
+    return redirect(url_for('confirm_checkout'))
+
+
+@app.route('/confirm_checkout')
+@login_required
+def confirm_checkout():
+    return render_template('confirm_checkout.html')
+
+
+@app.route('/add_transactions', methods=['GET', 'POST'])
+@login_required
+def add_transactions():
+    data = request.json
+    listing_ids = data.get('product_id')
+    if not listing_ids:
+        return jsonify({'error': 'Missing listing ID'}), 400
+
+    for listing_id in listing_ids:
+        Transaction(buyer_id=session['user_id'], listing_id=listing_id).create_transaction()
+
+    return render_template('/Transaction_Table.html')
+
+
+@app.route('/transaction_table')
+@login_required
+def transaction_table():
+    trans_df = DBManager().get_table('transactions')
+    list_df = DBManager().get_table('listings')
+    merged_df = pd.merge(trans_df, list_df)
+    return render_template('/Transaction_Table.html', merged_df=merged_df.to_dict(orient='records'))
+
+
+@app.route('/transaction_update', methods=['POST'])
+@login_required
+def transaction_update():
+    transaction = Transaction()
+    success = transaction.update_transaction(
+        request.form.get('transaction_id'),
+        {
+            'listing_id': request.form.get('listing_id'),
+            'buyer_id': request.form.get('buyer_id')
+        }
+    )
+    trans_df = DBManager().get_table('transactions')
+    list_df = DBManager().get_table('listings')
+    merged_df = pd.merge(trans_df, list_df)
+    return render_template('Transaction_Table.html', success=success, merged_df=merged_df.to_dict(orient='records'))
+
+
+@app.route('/delete_transaction', methods=['POST'])
+@login_required
+def delete_transaction():
+    transaction = Transaction(transaction_id=request.form.get('transaction_id'))
+    transaction.delete_transaction()
+    trans_df = DBManager().get_table('transactions')
+    list_df = DBManager().get_table('listings')
+    merged_df = pd.merge(trans_df, list_df)
+    return render_template('Transaction_Table.html', merged_df=merged_df.to_dict(orient='records'))
+
+
+# ======================
+# REPORT ROUTES
+# ======================
+@app.route('/user_listing_report')
+@login_required
+def listing_report():
+    df_listings = DBManager().get_table('listings')
+    user_listings = df_listings[df_listings['user_id'] == session['user_id']]
+    total_value = user_listings['price'].sum()
+
+    fig_price = px.bar(user_listings, x='category', y='price', title='Category by Price')
+    fig_html = fig_price.to_html(full_html=False)
+
+    return render_template('/user_listing_report.html',
+                           user_listings=user_listings.to_dict(orient='records'),
+                           fig_html=fig_html,
+                           table_type='listings',
+                           total_value=round(total_value, 2))
+
+
+@app.route('/admin_report')
+@admin_required
+def admin_report():
+    df_listings = DBManager().get_table('listings')
+    df_users = DBManager().get_table('users')
+    merged = pd.merge(df_listings, df_users)
+
+    fig = px.bar(merged.groupby('category').size().reset_index(name='count'),
+                 x='category', y='count', title='Category by Count', color='count')
+
+    return render_template('/admin_report.html',
+                           user_listings=merged.to_dict(orient='records'),
+                           fig_html=fig.to_html(full_html=False),
+                           table_type='listings',
+                           total_value=round(merged['price'].sum(), 2))
+
+
+# ======================
+# ADMIN ROUTES
+# ======================
+@app.route('/admin/users')
+@admin_required
+def admin_users():
+    users = DBManager().get_table('users').to_dict(orient='records')
+    return render_template('admin/users.html', users=users)
+
+
+@app.route('/admin/user/<int:user_id>/lock', methods=['POST'])
+@admin_required
+def admin_lock_user(user_id):
+    DBManager().execute_query(
+        "UPDATE users SET account_locked = TRUE WHERE user_id = %s",
+        (user_id,)
+    )
+    flash("User account locked", "success")
+    return redirect(url_for('admin_users'))
+
+
+@app.route('/admin/user/<int:user_id>/unlock', methods=['POST'])
+@admin_required
+def admin_unlock_user(user_id):
+    DBManager().execute_query(
+        "UPDATE users SET account_locked = FALSE, failed_login_attempts = 0 WHERE user_id = %s",
+        (user_id,)
+    )
+    flash("User account unlocked", "success")
+    return redirect(url_for('admin_users'))
+
+
+# ======================
+# ERROR HANDLERS
+# ======================
+@app.errorhandler(404)
+def page_not_found(e):
+    return render_template('404.html'), 404
+
+
+# ======================
+# SECURITY MIDDLEWARE
+# ======================
+# ======================
+# SECURITY MIDDLEWARE
+# ======================
+@app.before_request
+def before_request():
+    # Force HTTPS in production
+    if not request.is_secure and not app.debug:
+        return redirect(request.url.replace('http://', 'https://'), code=301)
+
+@app.after_request
+def add_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    if 'Cache-Control' not in response.headers:
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
+    return response
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
 # from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
 # from forms import *
 # from listing import Listing
@@ -847,585 +1437,3 @@
 #
 # if __name__ == '__main__':
 #     app.run(debug=True)
-
-from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
-from forms import *
-from listing import Listing
-from user import User
-from sendemail import Email
-from transaction import Transaction
-from dbmanager import *
-import plotly.express as px
-from functools import wraps
-import logging
-import pandas as pd
-from datetime import datetime
-from itsdangerous import URLSafeTimedSerializer
-from flask import current_app
-
-app = Flask(__name__, static_folder='')
-app.secret_key = 'helpmepls'
-
-# Initialize logging
-logger = logging.getLogger(__name__)
-
-
-# ======================
-# HELPER FUNCTIONS
-# ======================
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'user_id' not in session:
-            return redirect(url_for('login', next=request.url))
-        return f(*args, **kwargs)
-
-    return decorated_function
-
-
-def admin_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'user_id' not in session or not session.get('is_admin'):
-            return redirect(url_for('login', next=request.url))
-        return f(*args, **kwargs)
-
-    return decorated_function
-
-
-def generate_token(email):
-    serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
-    return serializer.dumps(email, salt='password-reset-salt')
-
-
-def verify_token(token, expiration=3600):
-    serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
-    try:
-        email = serializer.loads(
-            token,
-            salt='password-reset-salt',
-            max_age=expiration
-        )
-    except:
-        return False
-    return email
-
-
-# ======================
-# CORE ROUTES
-# ======================
-@app.route('/')
-def start():
-    session.clear()
-    session['loggedin'] = False
-    session['admin'] = False
-    return redirect(url_for('home'))
-
-
-@app.route('/home')
-def home():
-    db = DBManager()
-    listings = db.get_table('listings').to_dict(orient='records')
-    if session.get('admin'):
-        return render_template('admin_report.html')
-    return render_template('home.html', listings=listings)
-
-
-@app.route('/base')
-def base():
-    return render_template('base.html')
-
-
-# ======================
-# AUTHENTICATION ROUTES
-# ======================
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    form = LoginForm(request.form)
-    if request.method == 'POST' and form.validate():
-        credential = form.username_or_email.data.strip()
-        password = form.password.data.strip()
-        ip_address = request.remote_addr
-        user_agent = request.headers.get('User-Agent')
-
-        user = User()
-        login_success, otp = user.login(credential, password)
-
-        if login_success:
-            session['user_email'] = user.email
-            if otp:
-                return redirect(url_for('otp_route'))
-            else:
-                session.update({
-                    'user_id': user.user_id,
-                    'username': user.username,
-                    'email': user.email,
-                    'is_admin': user.is_admin,
-                    'profile_pic': user.profile_pic,
-                    'loggedin': True
-                })
-                return redirect(url_for('home'))
-        flash("Invalid username or password", "danger")
-    return render_template('login.html', form=form)
-
-
-@app.route('/otp_route', methods=['GET', 'POST'])
-def otp_route():
-    form = OTPForm(request.form)
-    user_email = session.get('user_email')
-
-    if request.method == 'GET':
-        session['otp'] = Email().send_otp(user_email)
-
-    elif request.method == 'POST' and form.validate():
-        user = User(email=user_email)
-        if user.verify_otp(form.otp.data.strip(), session.get('otp')):
-            session.update({
-                'user_id': user.user_id,
-                'username': user.username,
-                'email': user.email,
-                'is_admin': user.is_admin,
-                'profile_pic': user.profile_pic,
-                'loggedin': True
-            })
-            session.pop('user_email', None)
-            flash("OTP verified successfully!", "success")
-            return redirect(url_for('home'))
-        flash("Incorrect OTP", "danger")
-    return render_template('otp.html', form=form)
-
-
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('start'))
-
-
-@app.route('/signup', methods=['GET', 'POST'])
-def signup():
-    form = signupForm(request.form)
-    if request.method == 'POST' and form.validate():
-        user = User(
-            username=form.username.data.strip(),
-            email=form.email.data.strip(),
-            password=form.password.data.strip()
-        )
-        msg = user.create_user()
-        if msg is None:
-            flash('Registration successful! Please log in.', 'success')
-            Email().send_email(user.email, "Registration", "Thank you for signing up")
-            return redirect(url_for('login'))
-        flash(msg, 'danger')
-    return render_template('signup.html', form=form)
-
-
-# ======================
-# PASSWORD MANAGEMENT
-# ======================
-
-@app.route('/change_password_with_email', methods=['GET', 'POST'])
-def change_password_with_email():
-    form = RequestResetForm()
-    if form.validate_on_submit():
-        # Add your password reset logic here
-        user = User.query.filter_by(email=form.email.data).first()
-        if user:
-            # Send reset email
-            pass
-        flash('If an account exists with that email, a reset link has been sent', 'info')
-        return redirect(url_for('login'))
-    return render_template('change_password.html', form=form)
-
-@app.route('/change_password', methods=['GET', 'POST'])
-@login_required
-def change_password():
-    form = ChangePasswordForm(request.form)
-    if request.method == 'POST' and form.validate():
-        user = User(user_id=session['user_id'])
-        if user.verify_password(form.current_password.data):
-            if user.change_password(form.new_password.data):
-                flash("Password changed successfully", "success")
-                return redirect(url_for('profile', user_id=session['user_id']))
-            flash("Failed to change password", "danger")
-        else:
-            flash("Current password is incorrect", "danger")
-    return render_template('change_password.html', form=form)
-
-
-@app.route('/forgot_password', methods=['GET', 'POST'])
-def forgot_password():
-    form = ForgotPasswordForm(request.form)
-    if request.method == 'POST' and form.validate():
-        user = User(email=form.email.data.strip())
-        if user.get_user_by_email():
-            token = generate_token(user.email)
-            reset_url = url_for('reset_password', token=token, _external=True)
-            Email().send_email(user.email, "Password Reset", f"Reset link: {reset_url}")
-        flash("If this email exists, a reset link has been sent", "info")
-        return redirect(url_for('login'))
-    return render_template('forgot_password.html', form=form)
-
-
-@app.route('/reset_password/<token>', methods=['GET', 'POST'])
-def reset_password(token):
-    email = verify_token(token)
-    if not email:
-        flash("Invalid or expired reset link", "danger")
-        return redirect(url_for('forgot_password'))
-
-    form = ResetPasswordForm(request.form)
-    if request.method == 'POST' and form.validate():
-        user = User(email=email)
-        if user.get_user_by_email():
-            if user.change_password(form.new_password.data):
-                flash("Password reset successfully", "success")
-                return redirect(url_for('login'))
-    return render_template('reset_password.html', form=form, token=token)
-
-
-# ======================
-# USER PROFILE ROUTES
-# ======================
-@app.route('/profile/<int:user_id>', methods=['GET', 'POST'])
-@login_required
-def profile(user_id):
-    form = ProfileForm(request.form)
-    user = User(user_id=user_id)
-    user.get_user_by_id()
-
-    if request.method == 'POST' and form.validate():
-        user.profile_pic = form.profile_pic_url.data
-        user.username = form.username.data.strip()
-        user.email = form.email.data.strip()
-        user.name = form.name.data
-        user.phone_number = int(form.phone_number.data) if form.phone_number.data else None
-        user.twofa = form.twofa.data
-        user.edit_user()
-
-        session['user_image'] = user.profile_pic
-        if session['user_id'] == user_id:
-            session['profile_pic'] = user.profile_pic
-            session['username'] = user.username
-
-        flash("Profile updated successfully", "success")
-        return redirect(url_for('profile', user_id=user_id))
-
-    if request.method == 'GET':
-        form.profile_pic_url.data = user.profile_pic
-        form.username.data = user.username
-        form.email.data = user.email
-        form.name.data = user.name
-        form.phone_number.data = user.phone_number
-        form.twofa.data = user.twofa
-
-    return render_template('profile.html', form=form, user_id=user_id)
-
-
-@app.route('/delete_user', methods=['GET', 'POST'])
-@login_required
-def delete_user():
-    form = PasswordForm(request.form)
-    if request.method == 'POST' and form.validate():
-        user = User(user_id=session['user_id'])
-        if user.verify_password(form.password.data):
-            return redirect(url_for('confirm_delete_user', user_id=session['user_id']))
-        flash("Incorrect password", "danger")
-    return render_template('delete_user.html', form=form)
-
-
-@app.route('/confirm_delete_user/<int:user_id>', methods=['GET', 'POST'])
-@login_required
-def confirm_delete_user(user_id):
-    form = ProfileForm(request.form)
-    user = User(user_id=user_id)
-    user.get_user_by_id()
-
-    if request.method == 'POST':
-        user.delete_user()
-        if session['admin']:
-            return redirect(url_for('manage_user'))
-        return redirect(url_for('start'))
-
-    if request.method == 'GET':
-        form.profile_pic_url.data = user.profile_pic
-        form.username.data = user.username
-        form.email.data = user.email
-        form.name.data = user.name
-        form.phone_number.data = user.phone_number
-
-    return render_template('confirm_delete_user.html', form=form, user_id=user_id)
-
-
-# ======================
-# LISTING ROUTES
-# ======================
-@app.route('/products')
-def get_products():
-    db = DBManager()
-    listings = db.get_table('listings').to_dict(orient='records')
-    return render_template('home.html', listings=listings)
-
-
-@app.route('/create_listing', methods=['GET', 'POST'])
-@login_required
-def create_listing():
-    form = CreateListingForm(request.form)
-    if request.method == 'POST' and form.validate():
-        listing = Listing(
-            user_id=session['user_id'],
-            title=form.title.data.strip(),
-            description=form.description.data.strip(),
-            category=form.category.data.strip(),
-            price=form.price.data,
-            image_path=form.image_path.data.strip()
-        )
-        if listing.create_listing():
-            flash("Listing created successfully", "success")
-            return redirect(url_for('home'))
-    return render_template('create_listing.html', form=form)
-
-
-@app.route('/edit_listing/<int:listing_id>', methods=['GET', 'POST'])
-@login_required
-def edit_listing(listing_id):
-    form = CreateListingForm(request.form)
-    listing = Listing(listing_id=listing_id)
-    listing.get_listing_by_id()
-
-    if request.method == 'POST' and form.validate():
-        listing.title = form.title.data.strip()
-        listing.description = form.description.data.strip()
-        listing.category = form.category.data
-        listing.price = float(form.price.data)
-        listing.image_path = str(form.image_path.data)
-        listing.edit_listing()
-        session['listing_image'] = listing.image_path
-        flash("Listing updated successfully", "success")
-        return redirect(url_for('edit_listing', listing_id=listing_id))
-
-    if request.method == 'GET':
-        form.title.data = listing.title
-        form.description.data = listing.description
-        form.category.data = listing.category
-        form.price.data = listing.price
-        form.image_path.data = listing.image_path
-        session['listing_image'] = listing.image_path
-
-    return render_template('edit_listing.html', form=form, listing_id=listing_id)
-
-
-@app.route('/delete_listing/<int:listing_id>', methods=['GET', 'POST'])
-@login_required
-def delete_listing(listing_id):
-    form = CreateListingForm(request.form)
-    listing = Listing(listing_id=listing_id)
-    listing.get_listing_by_id()
-
-    if request.method == 'POST':
-        listing.delete_listing()
-        if session['admin']:
-            return redirect(url_for('admin_report'))
-        return redirect(url_for('listing_report'))
-
-    if request.method == 'GET':
-        form.title.data = listing.title
-        form.description.data = listing.description
-        form.category.data = listing.category
-        form.price.data = listing.price
-        form.image_path.data = listing.image_path
-        session['listing_image'] = listing.image_path
-
-    return render_template('delete_listing.html', form=form, listing_id=listing_id)
-
-
-# ======================
-# TRANSACTION ROUTES
-# ======================
-@app.route('/add_to_cart', methods=['POST'])
-@login_required
-def add_to_cart():
-    product_id = request.json.get('user_id')
-    db = DBManager()
-    cursor = db.conn.cursor()
-    cursor.execute("SELECT listing_id, title, price FROM listings WHERE listing_id = %s", (product_id,))
-    row = cursor.fetchone()
-    if row:
-        return jsonify(product=dict(listing_id=row[0], title=row[1], price=row[2]))
-    return jsonify({"error": "Product not found"}), 404
-
-
-@app.route('/cart')
-@login_required
-def cart():
-    return render_template('cart.html')
-
-
-@app.route('/checkout')
-@login_required
-def checkout():
-    return render_template('checkout.html')
-
-
-@app.route('/process_checkout', methods=['POST'])
-@login_required
-def process_checkout():
-    return redirect(url_for('confirm_checkout'))
-
-
-@app.route('/confirm_checkout')
-@login_required
-def confirm_checkout():
-    return render_template('confirm_checkout.html')
-
-
-@app.route('/add_transactions', methods=['GET', 'POST'])
-@login_required
-def add_transactions():
-    data = request.json
-    listing_ids = data.get('product_id')
-    if not listing_ids:
-        return jsonify({'error': 'Missing listing ID'}), 400
-
-    for listing_id in listing_ids:
-        Transaction(buyer_id=session['user_id'], listing_id=listing_id).create_transaction()
-
-    return render_template('/Transaction_Table.html')
-
-
-@app.route('/transaction_table')
-@login_required
-def transaction_table():
-    trans_df = DBManager().get_table('transactions')
-    list_df = DBManager().get_table('listings')
-    merged_df = pd.merge(trans_df, list_df)
-    return render_template('/Transaction_Table.html', merged_df=merged_df.to_dict(orient='records'))
-
-
-@app.route('/transaction_update', methods=['POST'])
-@login_required
-def transaction_update():
-    transaction = Transaction()
-    success = transaction.update_transaction(
-        request.form.get('transaction_id'),
-        {
-            'listing_id': request.form.get('listing_id'),
-            'buyer_id': request.form.get('buyer_id')
-        }
-    )
-    trans_df = DBManager().get_table('transactions')
-    list_df = DBManager().get_table('listings')
-    merged_df = pd.merge(trans_df, list_df)
-    return render_template('Transaction_Table.html', success=success, merged_df=merged_df.to_dict(orient='records'))
-
-
-@app.route('/delete_transaction', methods=['POST'])
-@login_required
-def delete_transaction():
-    transaction = Transaction(transaction_id=request.form.get('transaction_id'))
-    transaction.delete_transaction()
-    trans_df = DBManager().get_table('transactions')
-    list_df = DBManager().get_table('listings')
-    merged_df = pd.merge(trans_df, list_df)
-    return render_template('Transaction_Table.html', merged_df=merged_df.to_dict(orient='records'))
-
-
-# ======================
-# REPORT ROUTES
-# ======================
-@app.route('/user_listing_report')
-@login_required
-def listing_report():
-    df_listings = DBManager().get_table('listings')
-    user_listings = df_listings[df_listings['user_id'] == session['user_id']]
-    total_value = user_listings['price'].sum()
-
-    fig_price = px.bar(user_listings, x='category', y='price', title='Category by Price')
-    fig_html = fig_price.to_html(full_html=False)
-
-    return render_template('/user_listing_report.html',
-                           user_listings=user_listings.to_dict(orient='records'),
-                           fig_html=fig_html,
-                           table_type='listings',
-                           total_value=round(total_value, 2))
-
-
-@app.route('/admin_report')
-@admin_required
-def admin_report():
-    df_listings = DBManager().get_table('listings')
-    df_users = DBManager().get_table('users')
-    merged = pd.merge(df_listings, df_users)
-
-    fig = px.bar(merged.groupby('category').size().reset_index(name='count'),
-                 x='category', y='count', title='Category by Count', color='count')
-
-    return render_template('/admin_report.html',
-                           user_listings=merged.to_dict(orient='records'),
-                           fig_html=fig.to_html(full_html=False),
-                           table_type='listings',
-                           total_value=round(merged['price'].sum(), 2))
-
-
-# ======================
-# ADMIN ROUTES
-# ======================
-@app.route('/admin/users')
-@admin_required
-def admin_users():
-    users = DBManager().get_table('users').to_dict(orient='records')
-    return render_template('admin/users.html', users=users)
-
-
-@app.route('/admin/user/<int:user_id>/lock', methods=['POST'])
-@admin_required
-def admin_lock_user(user_id):
-    DBManager().execute_query(
-        "UPDATE users SET account_locked = TRUE WHERE user_id = %s",
-        (user_id,)
-    )
-    flash("User account locked", "success")
-    return redirect(url_for('admin_users'))
-
-
-@app.route('/admin/user/<int:user_id>/unlock', methods=['POST'])
-@admin_required
-def admin_unlock_user(user_id):
-    DBManager().execute_query(
-        "UPDATE users SET account_locked = FALSE, failed_login_attempts = 0 WHERE user_id = %s",
-        (user_id,)
-    )
-    flash("User account unlocked", "success")
-    return redirect(url_for('admin_users'))
-
-
-# ======================
-# ERROR HANDLERS
-# ======================
-@app.errorhandler(404)
-def page_not_found(e):
-    return render_template('404.html'), 404
-
-
-# ======================
-# SECURITY MIDDLEWARE
-# ======================
-# ======================
-# SECURITY MIDDLEWARE
-# ======================
-@app.before_request
-def before_request():
-    # Force HTTPS in production
-    if not request.is_secure and not app.debug:
-        return redirect(request.url.replace('http://', 'https://'), code=301)
-
-@app.after_request
-def add_security_headers(response):
-    response.headers['X-Content-Type-Options'] = 'nosniff'
-    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
-    response.headers['X-XSS-Protection'] = '1; mode=block'
-    if 'Cache-Control' not in response.headers:
-        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
-    return response
-
-if __name__ == '__main__':
-    app.run(debug=True)
